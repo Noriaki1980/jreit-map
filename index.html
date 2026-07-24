@@ -80,12 +80,23 @@
     header: true,
     skipEmptyLines: true,
     encoding: 'UTF-8',
+    // 先頭列にBOM(\uFEFF)が付く/前後に空白が入るケースに対応
+    transformHeader: h => h.replace(/^\uFEFF/, '').trim(),
     complete: function(results) {
+      console.log('CSV読み込み結果:', results); // デバッグ用（F12のConsoleで確認可）
       const rows = results.data;
+      if (!rows.length) {
+        document.getElementById('updated').textContent =
+          'CSVは読み込めましたが行が0件でした（列名の不一致の可能性）';
+        return;
+      }
       rows.forEach(r => {
         const lat = parseFloat(r['緯度']);
         const lng = parseFloat(r['経度']);
-        if (isNaN(lat) || isNaN(lng)) return;
+        if (isNaN(lat) || isNaN(lng)) {
+          console.warn('緯度経度が読めない行をスキップ:', r);
+          return;
+        }
         const reit = r['REIT名'] || '不明';
         const color = colorFor(reit);
         const marker = L.circleMarker([lat, lng], {
