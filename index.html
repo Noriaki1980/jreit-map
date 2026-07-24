@@ -6,42 +6,158 @@
 <title>J-REIT 取得物件マップ</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-  html, body { margin:0; padding:0; height:100%; font-family: "Hiragino Sans","Yu Gothic",sans-serif; }
-  #map { height: calc(100% - 56px); width: 100%; }
+  :root {
+    --navy: #16233a;
+    --navy-2: #1f2d3d;
+    --panel-bg: #f7f8fa;
+    --border: #e1e4e9;
+    --text: #232733;
+    --text-dim: #6b7280;
+    --accent: #2f6fed;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; font-family: "Hiragino Sans","Yu Gothic",-apple-system,sans-serif; color:var(--text); }
+  body { display:flex; flex-direction:column; }
+
   header {
-    height: 56px; display:flex; align-items:center; justify-content:space-between;
-    padding: 0 16px; background:#1f2d3d; color:#fff; box-sizing:border-box;
+    height: 56px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between;
+    padding: 0 16px; background:var(--navy-2); color:#fff; box-sizing:border-box; z-index:1100;
   }
-  header h1 { font-size: 15px; margin:0; font-weight:600; }
-  #updated { font-size:12px; color:#aab4c0; }
+  header .titles { display:flex; align-items:baseline; gap:10px; }
+  header h1 { font-size: 15px; margin:0; font-weight:700; letter-spacing:.01em; }
+  header .subtitle { font-size:11px; color:#9aa7bb; }
+  #updated { font-size:11px; color:#9aa7bb; }
+  #sidebarToggle {
+    display:none; background:none; border:1px solid #3a4a63; color:#fff; border-radius:6px;
+    width:32px; height:32px; font-size:16px; cursor:pointer; margin-right:8px;
+  }
+
+  .layout { flex:1; display:flex; min-height:0; }
+
+  #sidebar {
+    width: 320px; flex-shrink:0; background:var(--panel-bg); border-right:1px solid var(--border);
+    overflow-y:auto; padding:16px; font-size:12.5px;
+  }
+  #sidebar h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim); margin:18px 0 8px; }
+  #sidebar h2:first-of-type { margin-top:0; }
+
+  .stat-row { display:flex; gap:8px; margin-bottom:4px; }
+  .stat-card { flex:1; background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+  .stat-card .num { font-size:19px; font-weight:700; color:var(--navy); line-height:1.2; }
+  .stat-card .label { font-size:10.5px; color:var(--text-dim); margin-top:2px; }
+
+  .filter-actions { display:flex; gap:6px; margin-bottom:8px; }
+  .filter-actions button {
+    font-size:11px; padding:4px 9px; border-radius:6px; border:1px solid var(--border);
+    background:#fff; cursor:pointer; color:var(--text-dim);
+  }
+  .filter-actions button:hover { border-color:var(--accent); color:var(--accent); }
+
+  #reitFilters { max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:#fff; }
+  .reit-row {
+    display:flex; align-items:center; gap:7px; padding:6px 9px; cursor:pointer; border-bottom:1px solid #f0f1f4;
+    user-select:none;
+  }
+  .reit-row:last-child { border-bottom:none; }
+  .reit-row:hover { background:#f2f4f8; }
+  .reit-row input { accent-color:var(--accent); }
+  .reit-row .swatch { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .reit-row .name { flex:1; }
+  .reit-row .count { color:var(--text-dim); font-variant-numeric: tabular-nums; }
+
+  #usageFilters { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip {
+    font-size:11px; padding:5px 10px; border-radius:999px; border:1px solid var(--border);
+    background:#fff; cursor:pointer; color:var(--text-dim);
+  }
+  .chip.active { background:var(--navy); border-color:var(--navy); color:#fff; }
+
+  .price-range { background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+  .price-range input[type=range] { width:100%; accent-color:var(--accent); }
+  .price-range .val { display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); margin-top:2px; }
+
+  .chart-box { background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:4px; }
+  .chart-box canvas { max-height:180px; }
+  .chart-empty { font-size:11px; color:var(--text-dim); text-align:center; padding:20px 0; }
+
+  #map { flex:1; min-width:0; }
+
   .legend {
-    position:absolute; bottom:20px; right:20px; background:#fff; padding:10px 14px;
-    border-radius:8px; box-shadow:0 1px 6px rgba(0,0,0,0.3); font-size:12px; max-height:260px;
-    overflow-y:auto; z-index:1000;
+    position:absolute; bottom:16px; right:16px; background:#fff; padding:8px 10px;
+    border-radius:8px; box-shadow:0 1px 6px rgba(0,0,0,0.25); font-size:11px; max-height:200px;
+    overflow-y:auto; z-index:900; display:none;
   }
-  .legend div { display:flex; align-items:center; margin:3px 0; }
-  .swatch { width:12px; height:12px; border-radius:50%; margin-right:6px; flex-shrink:0; }
-  .popup-title { font-weight:700; margin-bottom:2px; }
+  .popup-title { font-weight:700; margin-bottom:2px; font-size:13px; }
   .popup-row { font-size:12px; color:#333; margin:1px 0; }
+
+  @media (max-width: 780px) {
+    #sidebarToggle { display:inline-block; }
+    #sidebar {
+      position:fixed; top:56px; bottom:0; left:0; width:85vw; max-width:340px;
+      transform:translateX(-100%); transition:transform .2s ease; z-index:1050;
+      box-shadow: 2px 0 12px rgba(0,0,0,.2);
+    }
+    #sidebar.open { transform:translateX(0); }
+    #map { width:100%; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>J-REIT 取得物件マップ</h1>
+  <div class="titles">
+    <button id="sidebarToggle" aria-label="フィルターを開く">☰</button>
+    <h1>J-REIT 取得物件マップ</h1>
+    <span class="subtitle">物流特化型REIT 8銘柄</span>
+  </div>
   <div id="updated">読み込み中...</div>
 </header>
-<div id="map"></div>
+
+<div class="layout">
+  <aside id="sidebar">
+    <h2>サマリー</h2>
+    <div class="stat-row">
+      <div class="stat-card"><div class="num" id="statCount">–</div><div class="label">表示中の物件数</div></div>
+      <div class="stat-card"><div class="num" id="statPrice">–</div><div class="label">取得価格合計(億円)</div></div>
+    </div>
+
+    <h2>REITで絞り込み</h2>
+    <div class="filter-actions">
+      <button id="selAll">すべて選択</button>
+      <button id="selNone">すべて解除</button>
+    </div>
+    <div id="reitFilters"></div>
+
+    <h2>用途で絞り込み</h2>
+    <div id="usageFilters"></div>
+
+    <h2>取得価格(億円)</h2>
+    <div class="price-range">
+      <input type="range" id="priceMin" min="0" max="500" value="0">
+      <input type="range" id="priceMax" min="0" max="500" value="500">
+      <div class="val"><span id="priceMinLabel">0億円以上</span><span id="priceMaxLabel">500億円以下</span></div>
+    </div>
+
+    <h2>REIT別 取得価格合計</h2>
+    <div class="chart-box"><canvas id="barChart"></canvas></div>
+
+    <h2>用途別 内訳（件数）</h2>
+    <div class="chart-box"><canvas id="pieChart"></canvas></div>
+  </aside>
+
+  <div id="map"></div>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
-  const map = L.map('map').setView([35.68, 137.5], 6);
+  const map = L.map('map', {zoomControl:false}).setView([35.68, 137.5], 6);
+  L.control.zoom({position:'topright'}).addTo(map);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19
   }).addTo(map);
 
-  // REIT名 -> 色 を安定的に割り当てるためのパレット
   const PALETTE = [
     '#e6194B','#3cb44b','#4363d8','#f58231','#911eb4',
     '#42d4f4','#f032e6','#bfef45','#fabed4','#469990',
@@ -57,77 +173,238 @@
     return colorMap[reit];
   }
 
-  const legend = L.control({position: 'bottomright'});
-  legend.onAdd = function() {
-    this._div = L.DomUtil.create('div', 'legend');
-    this._div.innerHTML = '<b>REIT</b><br>読み込み中...';
-    return this._div;
-  };
-  legend.addTo(map);
+  let allRows = [];        // CSV全行(緯度経度が読めたもののみ)
+  let markers = [];        // {row, marker}
+  const activeReits = new Set();
+  const activeUsages = new Set();
+  let priceMin = 0, priceMax = 500;
+  let barChart, pieChart;
 
-  function renderLegend() {
-    const rows = Object.entries(colorMap)
-      .sort((a,b) => a[0].localeCompare(b[0], 'ja'))
-      .map(([reit, color]) =>
-        `<div><span class="swatch" style="background:${color}"></span>${reit}</div>`
-      ).join('');
-    document.querySelector('.legend').innerHTML = '<b>REIT</b>' + rows;
+  function usageBucket(u) {
+    if (!u) return '不明';
+    if (u.includes('底地')) return '底地';
+    if (u.includes('土地')) return '土地';
+    if (u.includes('インダストリアル')) return 'インダストリアル不動産';
+    if (u.includes('物流')) return '物流施設';
+    return u;
   }
 
-  // data/properties.csv を直接読みに行く（同じリポジトリ内、相対パス）
+  function applyFilters() {
+    return allRows.filter(r => {
+      if (!activeReits.has(r.reit)) return false;
+      if (!activeUsages.has(r.usageBucket)) return false;
+      const p = r.price === null ? null : r.price;
+      if (p !== null && (p < priceMin || p > priceMax)) return false;
+      return true;
+    });
+  }
+
+  function renderMarkers(filtered) {
+    markers.forEach(m => map.removeLayer(m.marker));
+    markers = [];
+    const filteredSet = new Set(filtered);
+    allRows.forEach(r => {
+      if (!filteredSet.has(r)) return;
+      const marker = L.circleMarker([r.lat, r.lng], {
+        radius: 7, fillColor: colorFor(r.reit), color:'#333', weight:1, fillOpacity:.85
+      }).addTo(map);
+      const price = r.price !== null ? `${r.price}億円` : '価格非公表';
+      marker.bindPopup(`
+        <div class="popup-title">${r.name}</div>
+        <div class="popup-row"><b>${r.reit}</b>（${r.code || ''}）</div>
+        <div class="popup-row">所在地: ${r.addr}</div>
+        <div class="popup-row">用途: ${r.usage}</div>
+        <div class="popup-row">取得(予定)日: ${r.date}</div>
+        <div class="popup-row">取得価格: ${price}</div>
+        <div class="popup-row" style="color:#888">出典: ${r.source}</div>
+      `);
+      markers.push({row:r, marker});
+    });
+  }
+
+  function renderStats(filtered) {
+    document.getElementById('statCount').textContent = filtered.length.toLocaleString();
+    const total = filtered.reduce((s,r)=> s + (r.price||0), 0);
+    document.getElementById('statPrice').textContent = total.toLocaleString(undefined,{maximumFractionDigits:0});
+  }
+
+  function renderCharts(filtered) {
+    const byReit = {};
+    filtered.forEach(r => { byReit[r.reit] = (byReit[r.reit]||0) + (r.price||0); });
+    const reitEntries = Object.entries(byReit).sort((a,b)=>b[1]-a[1]);
+
+    const barCtx = document.getElementById('barChart');
+    if (barChart) barChart.destroy();
+    if (reitEntries.length) {
+      barChart = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+          labels: reitEntries.map(e => e[0].replace('投資法人','')),
+          datasets: [{
+            data: reitEntries.map(e => Math.round(e[1])),
+            backgroundColor: reitEntries.map(e => colorFor(e[0]))
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          plugins: { legend: { display:false } },
+          scales: {
+            x: { title:{display:true, text:'億円', font:{size:10}}, ticks:{font:{size:9}} },
+            y: { ticks:{font:{size:9}} }
+          }
+        }
+      });
+    }
+
+    const byUsage = {};
+    filtered.forEach(r => { byUsage[r.usageBucket] = (byUsage[r.usageBucket]||0) + 1; });
+    const usageEntries = Object.entries(byUsage);
+    const pieCtx = document.getElementById('pieChart');
+    if (pieChart) pieChart.destroy();
+    if (usageEntries.length) {
+      const usagePalette = ['#2f6fed','#f58231','#3cb44b','#911eb4','#e6194B'];
+      pieChart = new Chart(pieCtx, {
+        type: 'doughnut',
+        data: {
+          labels: usageEntries.map(e=>e[0]),
+          datasets: [{ data: usageEntries.map(e=>e[1]), backgroundColor: usagePalette }]
+        },
+        options: { plugins: { legend: { position:'bottom', labels:{font:{size:10}, boxWidth:10} } } }
+      });
+    }
+  }
+
+  function refresh() {
+    const filtered = applyFilters();
+    renderMarkers(filtered);
+    renderStats(filtered);
+    renderCharts(filtered);
+  }
+
+  function buildReitFilters() {
+    const reits = [...new Set(allRows.map(r=>r.reit))].sort((a,b)=>a.localeCompare(b,'ja'));
+    reits.forEach(r => activeReits.add(r));
+    const countByReit = {};
+    allRows.forEach(r => { countByReit[r.reit] = (countByReit[r.reit]||0)+1; });
+
+    const container = document.getElementById('reitFilters');
+    container.innerHTML = '';
+    reits.forEach(reit => {
+      const row = document.createElement('label');
+      row.className = 'reit-row';
+      row.innerHTML = `
+        <input type="checkbox" checked data-reit="${reit}">
+        <span class="swatch" style="background:${colorFor(reit)}"></span>
+        <span class="name">${reit}</span>
+        <span class="count">${countByReit[reit]}</span>
+      `;
+      row.querySelector('input').addEventListener('change', e => {
+        if (e.target.checked) activeReits.add(reit); else activeReits.delete(reit);
+        refresh();
+      });
+      container.appendChild(row);
+    });
+  }
+
+  function buildUsageFilters() {
+    const usages = [...new Set(allRows.map(r=>r.usageBucket))];
+    usages.forEach(u => activeUsages.add(u));
+    const container = document.getElementById('usageFilters');
+    container.innerHTML = '';
+    usages.forEach(u => {
+      const chip = document.createElement('div');
+      chip.className = 'chip active';
+      chip.textContent = u;
+      chip.addEventListener('click', () => {
+        if (activeUsages.has(u)) { activeUsages.delete(u); chip.classList.remove('active'); }
+        else { activeUsages.add(u); chip.classList.add('active'); }
+        refresh();
+      });
+      container.appendChild(chip);
+    });
+  }
+
+  function buildPriceSlider() {
+    const prices = allRows.map(r=>r.price).filter(p=>p!==null);
+    const maxPrice = prices.length ? Math.ceil(Math.max(...prices)/10)*10 : 500;
+    const minEl = document.getElementById('priceMin');
+    const maxEl = document.getElementById('priceMax');
+    minEl.max = maxPrice; maxEl.max = maxPrice; maxEl.value = maxPrice;
+    priceMax = maxPrice;
+    function updateLabels() {
+      document.getElementById('priceMinLabel').textContent = `${priceMin}億円以上`;
+      document.getElementById('priceMaxLabel').textContent = `${priceMax}億円以下`;
+    }
+    minEl.addEventListener('input', () => {
+      priceMin = Math.min(+minEl.value, priceMax);
+      minEl.value = priceMin;
+      updateLabels(); refresh();
+    });
+    maxEl.addEventListener('input', () => {
+      priceMax = Math.max(+maxEl.value, priceMin);
+      maxEl.value = priceMax;
+      updateLabels(); refresh();
+    });
+    updateLabels();
+  }
+
+  document.getElementById('selAll').addEventListener('click', () => {
+    document.querySelectorAll('#reitFilters input').forEach(cb => { cb.checked = true; activeReits.add(cb.dataset.reit); });
+    refresh();
+  });
+  document.getElementById('selNone').addEventListener('click', () => {
+    document.querySelectorAll('#reitFilters input').forEach(cb => { cb.checked = false; activeReits.delete(cb.dataset.reit); });
+    refresh();
+  });
+
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('sidebarToggle').addEventListener('click', () => sidebar.classList.toggle('open'));
+
   Papa.parse('data/properties.csv', {
     download: true,
     header: true,
     skipEmptyLines: true,
     encoding: 'UTF-8',
-    // 先頭列にBOM(\uFEFF)が付く/前後に空白が入るケースに対応
     transformHeader: h => h.replace(/^\uFEFF/, '').trim(),
     complete: function(results) {
-      console.log('CSV読み込み結果:', results); // デバッグ用（F12のConsoleで確認可）
-      const rows = results.data;
-      if (!rows.length) {
-        document.getElementById('updated').textContent =
-          'CSVは読み込めましたが行が0件でした（列名の不一致の可能性）';
-        return;
-      }
-      rows.forEach(r => {
+      const raw = results.data;
+      allRows = raw.map(r => {
         const lat = parseFloat(r['緯度']);
         const lng = parseFloat(r['経度']);
-        if (isNaN(lat) || isNaN(lng)) {
-          console.warn('緯度経度が読めない行をスキップ:', r);
-          return;
-        }
-        const reit = r['REIT名'] || '不明';
-        const color = colorFor(reit);
-        const marker = L.circleMarker([lat, lng], {
-          radius: 8,
-          fillColor: color,
-          color: '#333',
-          weight: 1,
-          fillOpacity: 0.85
-        }).addTo(map);
+        const priceStr = r['取得価格_億円'];
+        const price = priceStr && !isNaN(parseFloat(priceStr)) ? parseFloat(priceStr) : null;
+        const usage = r['用途'] || '不明';
+        return {
+          reit: r['REIT名'] || '不明',
+          code: r['証券コード'] || '',
+          name: r['物件名'] || '',
+          addr: r['所在地'] || '',
+          usage, usageBucket: usageBucket(usage),
+          date: r['取得予定日'] || '',
+          price,
+          lat, lng,
+          source: r['出典'] || ''
+        };
+      }).filter(r => !isNaN(r.lat) && !isNaN(r.lng));
 
-        const price = r['取得価格_億円'] ? `${r['取得価格_億円']}億円` : '価格非公表';
-        marker.bindPopup(`
-          <div class="popup-title">${r['物件名'] || ''}</div>
-          <div class="popup-row"><b>${reit}</b>（${r['証券コード'] || ''}）</div>
-          <div class="popup-row">所在地: ${r['所在地'] || ''}</div>
-          <div class="popup-row">用途: ${r['用途'] || ''}</div>
-          <div class="popup-row">取得(予定)日: ${r['取得予定日'] || ''}</div>
-          <div class="popup-row">取得価格: ${price}</div>
-          <div class="popup-row" style="color:#888">出典: ${r['出典'] || ''}</div>
-        `);
-      });
-      renderLegend();
+      if (!allRows.length) {
+        document.getElementById('updated').textContent = 'データが0件でした（列名の不一致の可能性）';
+        return;
+      }
+
+      buildReitFilters();
+      buildUsageFilters();
+      buildPriceSlider();
+      refresh();
+
       document.getElementById('updated').textContent =
-        `物件数: ${rows.length} ／ データ最終更新: ${window.__LAST_UPDATED__ || '不明'}`;
+        `総物件数: ${allRows.length} ／ 最終更新: ${window.__LAST_UPDATED__ || '不明'}`;
     },
     error: function(err) {
       document.getElementById('updated').textContent = 'データの読み込みに失敗しました: ' + err;
     }
   });
 </script>
-<!-- update.yml がコミット時にこの行のタイムスタンプを書き換える -->
 <script>window.__LAST_UPDATED__ = "2026-07-25";</script>
 </body>
 </html>
