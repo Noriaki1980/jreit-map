@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J-REIT 取得物件マップ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body { margin:0; padding:0; height:100%; font-family: "Hiragino Sans","Yu Gothic",sans-serif; }
+  #map { height: calc(100% - 56px); width: 100%; }
+  header {
+    height: 56px; display:flex; align-items:center; justify-content:space-between;
+    padding: 0 16px; background:#1f2d3d; color:#fff; box-sizing:border-box;
+  }
+  header h1 { font-size: 15px; margin:0; font-weight:600; }
+  #updated { font-size:12px; color:#aab4c0; }
+  .legend {
+    position:absolute; bottom:20px; right:20px; background:#fff; padding:10px 14px;
+    border-radius:8px; box-shadow:0 1px 6px rgba(0,0,0,0.3); font-size:12px; max-height:260px;
+    overflow-y:auto; z-index:1000;
+  }
+  .legend div { display:flex; align-items:center; margin:3px 0; }
+  .swatch { width:12px; height:12px; border-radius:50%; margin-right:6px; flex-shrink:0; }
+  .popup-title { font-weight:700; margin-bottom:2px; }
+  .popup-row { font-size:12px; color:#333; margin:1px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>J-REIT 取得物件マップ</h1>
+  <div id="updated">読み込み中...</div>
+</header>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script>
+  const map = L.map('map').setView([35.68, 137.5], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  // REIT名 -> 色 を安定的に割り当てるためのパレット
+  const PALETTE = [
+    '#e6194B','#3cb44b','#4363d8','#f58231','#911eb4',
+    '#42d4f4','#f032e6','#bfef45','#fabed4','#469990',
+    '#dcbeff','#9A6324','#800000','#808000','#000075',
+    '#a9a9a9','#e6beff','#000000','#ffd8b1','#aaffc3'
+  ];
+  const colorMap = {};
+  function colorFor(reit) {
+    if (!colorMap[reit]) {
+      const idx = Object.keys(colorMap).length % PALETTE.length;
+      colorMap[reit] = PALETTE[idx];
+    }
+    return colorMap[reit];
+  }
+
+  const legend = L.control({position: 'bottomright'});
+  legend.onAdd = function() {
+    this._div = L.DomUtil.create('div', 'legend');
+    this._div.innerHTML = '<b>REIT</b><br>読み込み中...';
+    return this._div;
+  };
+  legend.addTo(map);
+
+  function renderLegend() {
+    const rows = Object.entries(colorMap)
+      .sort((a,b) => a[0].localeCompare(b[0], 'ja'))
+      .map(([reit, color]) =>
+        `<div><span class="swatch" style="background:${color}"></span>${reit}</div>`
+      ).join('');
+    document.querySelector('.legend').innerHTML = '<b>REIT</b>' + rows;
+  }
+
+  // data/properties.csv を直接読みに行く（同じリポジトリ内、相対パス）
+  Papa.parse('data/properties.csv', {
+    download: true,
+    header: true,
+    skipEmptyLines: true,
+    encoding: 'UTF-8',
+    complete: function(results) {
+      const rows = results.data;
+      rows.forEach(r => {
+        const lat = parseFloat(r['緯度']);
+        const lng = parseFloat(r['経度']);
+        if (isNaN(lat) || isNaN(lng)) return;
+        const reit = r['REIT名'] || '不明';
+        const color = colorFor(reit);
+        const marker = L.circleMarker([lat, lng], {
+          radius: 8,
+          fillColor: color,
+          color: '#333',
+          weight: 1,
+          fillOpacity: 0.85
+        }).addTo(map);
+
+        const price = r['取得価格_億円'] ? `${r['取得価格_億円']}億円` : '価格非公表';
+        marker.bindPopup(`
+          <div class="popup-title">${r['物件名'] || ''}</div>
+          <div class="popup-row"><b>${reit}</b>（${r['証券コード'] || ''}）</div>
+          <div class="popup-row">所在地: ${r['所在地'] || ''}</div>
+          <div class="popup-row">用途: ${r['用途'] || ''}</div>
+          <div class="popup-row">取得(予定)日: ${r['取得予定日'] || ''}</div>
+          <div class="popup-row">取得価格: ${price}</div>
+          <div class="popup-row" style="color:#888">出典: ${r['出典'] || ''}</div>
+        `);
+      });
+      renderLegend();
+      document.getElementById('updated').textContent =
+        `物件数: ${rows.length} ／ データ最終更新: ${window.__LAST_UPDATED__ || '不明'}`;
+    },
+    error: function(err) {
+      document.getElementById('updated').textContent = 'データの読み込みに失敗しました: ' + err;
+    }
+  });
+</script>
+<!-- update.yml がコミット時にこの行のタイムスタンプを書き換える -->
+<script>window.__LAST_UPDATED__ = "2026-07-25";</script>
+</body>
+</html>

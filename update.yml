@@ -1,0 +1,31 @@
+name: Update J-REIT property data
+
+on:
+  schedule:
+    # 毎週月曜 9:00 JST (00:00 UTC)
+    - cron: "0 0 * * 1"
+  workflow_dispatch: {}   # 手動実行ボタン用
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run scraper
+        run: python scraper.py
+
+      - name: Commit changes if any
+        run: |
+          git config user.name "reit-map-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/properties.csv index.html
+          git diff --cached --quiet || git commit -m "chore: update property data ($(date -u +%Y-%m-%d))"
+          git push
