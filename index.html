@@ -41,10 +41,26 @@
   #sidebar h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim); margin:18px 0 8px; }
   #sidebar h2:first-of-type { margin-top:0; }
 
+  .breadcrumb { display:flex; align-items:center; flex-wrap:wrap; gap:4px; font-size:12.5px; margin-bottom:4px; }
+  .crumb { color:var(--accent); cursor:pointer; text-decoration:none; }
+  .crumb:hover { text-decoration:underline; }
+  .crumb.current { color:var(--text); font-weight:700; cursor:default; text-decoration:none; }
+  .crumb-sep { color:var(--text-dim); }
+
   .stat-row { display:flex; gap:8px; margin-bottom:4px; }
   .stat-card { flex:1; background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
   .stat-card .num { font-size:19px; font-weight:700; color:var(--navy); line-height:1.2; }
   .stat-card .label { font-size:10.5px; color:var(--text-dim); margin-top:2px; }
+
+  .attr-card {
+    display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border);
+    border-radius:8px; background:#fff; cursor:pointer; margin-bottom:6px; transition:box-shadow .15s;
+  }
+  .attr-card:hover { box-shadow:0 2px 8px rgba(0,0,0,.08); border-color:var(--accent); }
+  .attr-swatch { width:14px; height:14px; border-radius:4px; flex-shrink:0; }
+  .attr-name { flex:1; font-weight:600; }
+  .attr-count { color:var(--text-dim); font-variant-numeric: tabular-nums; font-size:11.5px; }
+  .attr-arrow { color:var(--text-dim); font-size:14px; }
 
   .filter-actions { display:flex; gap:6px; margin-bottom:8px; }
   .filter-actions button {
@@ -53,24 +69,19 @@
   }
   .filter-actions button:hover { border-color:var(--accent); color:var(--accent); }
 
-  #reitFilters { max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:#fff; }
+  #reitFilters { max-height:280px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:#fff; }
   .reit-row {
-    display:flex; align-items:center; gap:7px; padding:6px 9px; cursor:pointer; border-bottom:1px solid #f0f1f4;
+    display:flex; align-items:center; gap:7px; padding:6px 9px; border-bottom:1px solid #f0f1f4;
     user-select:none;
   }
   .reit-row:last-child { border-bottom:none; }
   .reit-row:hover { background:#f2f4f8; }
-  .reit-row input { accent-color:var(--accent); }
+  .reit-row input { accent-color:var(--accent); flex-shrink:0; }
   .reit-row .swatch { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-  .reit-row .name { flex:1; }
+  .reit-row .name { flex:1; cursor:pointer; }
   .reit-row .count { color:var(--text-dim); font-variant-numeric: tabular-nums; }
-
-  #usageFilters { display:flex; flex-wrap:wrap; gap:6px; }
-  .chip {
-    font-size:11px; padding:5px 10px; border-radius:999px; border:1px solid var(--border);
-    background:#fff; cursor:pointer; color:var(--text-dim);
-  }
-  .chip.active { background:var(--navy); border-color:var(--navy); color:#fff; }
+  .reit-row .drill { color:var(--accent); cursor:pointer; font-size:13px; padding:2px 4px; flex-shrink:0; }
+  .reit-row .drill:hover { text-decoration:underline; }
 
   .price-range { background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
   .price-range input[type=range] { width:100%; accent-color:var(--accent); }
@@ -78,15 +89,16 @@
 
   .chart-box { background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:4px; }
   .chart-box canvas { max-height:180px; }
-  .chart-empty { font-size:11px; color:var(--text-dim); text-align:center; padding:20px 0; }
+
+  .prop-list { max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:#fff; }
+  .prop-row { padding:8px 10px; border-bottom:1px solid #f0f1f4; cursor:pointer; }
+  .prop-row:last-child { border-bottom:none; }
+  .prop-row:hover { background:#f2f4f8; }
+  .prop-row .pname { font-weight:600; }
+  .prop-row .pmeta { color:var(--text-dim); font-size:11px; margin-top:2px; }
 
   #map { flex:1; min-width:0; }
 
-  .legend {
-    position:absolute; bottom:16px; right:16px; background:#fff; padding:8px 10px;
-    border-radius:8px; box-shadow:0 1px 6px rgba(0,0,0,0.25); font-size:11px; max-height:200px;
-    overflow-y:auto; z-index:900; display:none;
-  }
   .popup-title { font-weight:700; margin-bottom:2px; font-size:13px; }
   .popup-row { font-size:12px; color:#333; margin:1px 0; }
 
@@ -107,28 +119,21 @@
   <div class="titles">
     <button id="sidebarToggle" aria-label="フィルターを開く">☰</button>
     <h1>J-REIT 取得物件マップ</h1>
-    <span class="subtitle">物流特化型REIT 8銘柄</span>
+    <span class="subtitle" id="headerSubtitle">属性別</span>
   </div>
   <div id="updated">読み込み中...</div>
 </header>
 
 <div class="layout">
   <aside id="sidebar">
-    <h2>サマリー</h2>
+    <div class="breadcrumb" id="breadcrumb"></div>
+
     <div class="stat-row">
       <div class="stat-card"><div class="num" id="statCount">–</div><div class="label">表示中の物件数</div></div>
       <div class="stat-card"><div class="num" id="statPrice">–</div><div class="label">取得価格合計(億円)</div></div>
     </div>
 
-    <h2>REITで絞り込み</h2>
-    <div class="filter-actions">
-      <button id="selAll">すべて選択</button>
-      <button id="selNone">すべて解除</button>
-    </div>
-    <div id="reitFilters"></div>
-
-    <h2>用途で絞り込み</h2>
-    <div id="usageFilters"></div>
+    <div id="drilldownArea"></div>
 
     <h2>取得価格(億円)</h2>
     <div class="price-range">
@@ -137,7 +142,7 @@
       <div class="val"><span id="priceMinLabel">0億円以上</span><span id="priceMaxLabel">500億円以下</span></div>
     </div>
 
-    <h2>REIT別 取得価格合計</h2>
+    <h2 id="barChartTitle">属性別 取得価格合計</h2>
     <div class="chart-box"><canvas id="barChart"></canvas></div>
 
     <h2>用途別 内訳（件数）</h2>
@@ -164,55 +169,73 @@
     '#dcbeff','#9A6324','#800000','#808000','#000075',
     '#a9a9a9','#e6beff','#000000','#ffd8b1','#aaffc3'
   ];
-  const colorMap = {};
-  function colorFor(reit) {
-    if (!colorMap[reit]) {
-      const idx = Object.keys(colorMap).length % PALETTE.length;
-      colorMap[reit] = PALETTE[idx];
+  const ATTR_PALETTE = {
+    "物流施設": "#2f6fed", "ホテル": "#e6194B", "住宅": "#3cb44b",
+    "オフィス": "#911eb4", "商業施設": "#f58231", "その他": "#9A6324"
+  };
+  const reitColorMap = {};
+  function reitColor(reit) {
+    if (!reitColorMap[reit]) {
+      const idx = Object.keys(reitColorMap).length % PALETTE.length;
+      reitColorMap[reit] = PALETTE[idx];
     }
-    return colorMap[reit];
+    return reitColorMap[reit];
+  }
+  function attrColor(attr) {
+    return ATTR_PALETTE[attr] || '#666666';
   }
 
-  let allRows = [];        // CSV全行(緯度経度が読めたもののみ)
-  let markers = [];        // {row, marker}
-  const activeReits = new Set();
-  const activeUsages = new Set();
-  let priceMin = 0, priceMax = 500;
+  let allRows = [];
+  let markers = [];
   let barChart, pieChart;
 
-  function usageBucket(u) {
-    if (!u) return '不明';
-    if (u.includes('底地')) return '底地';
-    if (u.includes('土地')) return '土地';
-    if (u.includes('インダストリアル')) return 'インダストリアル不動産';
-    if (u.includes('物流')) return '物流施設';
-    return u;
-  }
+  let state = { attribute: null, reit: null };
+  const activeReits = new Set();
+  let priceMin = 0, priceMax = 500;
 
-  function applyFilters() {
+  function currentScope() {
     return allRows.filter(r => {
-      if (!activeReits.has(r.reit)) return false;
-      if (!activeUsages.has(r.usageBucket)) return false;
-      const p = r.price === null ? null : r.price;
-      if (p !== null && (p < priceMin || p > priceMax)) return false;
+      if (state.attribute && r.attribute !== state.attribute) return false;
+      if (state.reit && r.reit !== state.reit) return false;
       return true;
     });
   }
 
-  function renderMarkers(filtered) {
+  function applyPriceFilter(rows) {
+    return rows.filter(r => {
+      if (r.price === null) return true;
+      return r.price >= priceMin && r.price <= priceMax;
+    });
+  }
+
+  function applyReitCheckboxFilter(rows) {
+    if (state.attribute && !state.reit) {
+      return rows.filter(r => activeReits.has(r.reit));
+    }
+    return rows;
+  }
+
+  function visibleRows() {
+    return applyReitCheckboxFilter(applyPriceFilter(currentScope()));
+  }
+
+  function colorForRow(r) {
+    if (!state.attribute) return attrColor(r.attribute);
+    return reitColor(r.reit);
+  }
+
+  function renderMarkers(rows) {
     markers.forEach(m => map.removeLayer(m.marker));
     markers = [];
-    const filteredSet = new Set(filtered);
-    allRows.forEach(r => {
-      if (!filteredSet.has(r)) return;
+    rows.forEach(r => {
       const marker = L.circleMarker([r.lat, r.lng], {
-        radius: 7, fillColor: colorFor(r.reit), color:'#333', weight:1, fillOpacity:.85
+        radius: 7, fillColor: colorForRow(r), color:'#333', weight:1, fillOpacity:.85
       }).addTo(map);
       const price = r.price !== null ? `${r.price}億円` : '価格非公表';
       marker.bindPopup(`
         <div class="popup-title">${r.name}</div>
         <div class="popup-row"><b>${r.reit}</b>（${r.code || ''}）</div>
-        <div class="popup-row">所在地: ${r.addr}</div>
+        <div class="popup-row">属性: ${r.attribute} ／ 所在地: ${r.addr}</div>
         <div class="popup-row">用途: ${r.usage}</div>
         <div class="popup-row">取得(予定)日: ${r.date}</div>
         <div class="popup-row">取得価格: ${price}</div>
@@ -222,28 +245,172 @@
     });
   }
 
-  function renderStats(filtered) {
-    document.getElementById('statCount').textContent = filtered.length.toLocaleString();
-    const total = filtered.reduce((s,r)=> s + (r.price||0), 0);
+  function fitToRows(rows) {
+    const pts = rows.filter(r => !isNaN(r.lat) && !isNaN(r.lng)).map(r => [r.lat, r.lng]);
+    if (pts.length) map.fitBounds(pts, {padding:[30,30], maxZoom: 12});
+  }
+
+  function renderStats(rows) {
+    document.getElementById('statCount').textContent = rows.length.toLocaleString();
+    const total = rows.reduce((s,r)=> s + (r.price||0), 0);
     document.getElementById('statPrice').textContent = total.toLocaleString(undefined,{maximumFractionDigits:0});
   }
 
-  function renderCharts(filtered) {
-    const byReit = {};
-    filtered.forEach(r => { byReit[r.reit] = (byReit[r.reit]||0) + (r.price||0); });
-    const reitEntries = Object.entries(byReit).sort((a,b)=>b[1]-a[1]);
+  function renderBreadcrumb() {
+    const el = document.getElementById('breadcrumb');
+    const parts = [];
+    parts.push(state.attribute
+      ? `<span class="crumb" data-nav="top">すべて</span>`
+      : `<span class="crumb current">すべて</span>`);
+    if (state.attribute) {
+      parts.push(`<span class="crumb-sep">›</span>`);
+      parts.push(state.reit
+        ? `<span class="crumb" data-nav="attribute">${state.attribute}</span>`
+        : `<span class="crumb current">${state.attribute}</span>`);
+    }
+    if (state.reit) {
+      parts.push(`<span class="crumb-sep">›</span>`);
+      parts.push(`<span class="crumb current">${state.reit}</span>`);
+    }
+    el.innerHTML = parts.join('');
+    el.querySelectorAll('.crumb[data-nav]').forEach(elm => {
+      elm.addEventListener('click', () => {
+        const nav = elm.dataset.nav;
+        if (nav === 'top') { state.attribute = null; state.reit = null; }
+        if (nav === 'attribute') { state.reit = null; }
+        onStateChange();
+      });
+    });
+    document.getElementById('headerSubtitle').textContent =
+      state.reit ? state.reit : (state.attribute ? state.attribute + ' 内訳' : '属性別');
+  }
 
+  function renderDrilldownArea() {
+    const area = document.getElementById('drilldownArea');
+
+    if (!state.attribute) {
+      const byAttr = {};
+      allRows.forEach(r => {
+        if (!byAttr[r.attribute]) byAttr[r.attribute] = {count:0, price:0};
+        byAttr[r.attribute].count++;
+        byAttr[r.attribute].price += (r.price||0);
+      });
+      const entries = Object.entries(byAttr).sort((a,b)=>b[1].count-a[1].count);
+      area.innerHTML = `<h2>属性で絞り込む（クリックでドリルダウン）</h2>` +
+        entries.map(([attr, v]) => `
+          <div class="attr-card" data-attr="${attr}">
+            <span class="attr-swatch" style="background:${attrColor(attr)}"></span>
+            <span class="attr-name">${attr}</span>
+            <span class="attr-count">${v.count}件 ／ ${Math.round(v.price).toLocaleString()}億円</span>
+            <span class="attr-arrow">›</span>
+          </div>
+        `).join('');
+      area.querySelectorAll('.attr-card').forEach(elm => {
+        elm.addEventListener('click', () => {
+          state.attribute = elm.dataset.attr;
+          state.reit = null;
+          const reitsInAttr = new Set(allRows.filter(r=>r.attribute===state.attribute).map(r=>r.reit));
+          activeReits.clear();
+          reitsInAttr.forEach(r => activeReits.add(r));
+          onStateChange(true);
+        });
+      });
+      return;
+    }
+
+    if (state.attribute && !state.reit) {
+      const rowsInAttr = allRows.filter(r => r.attribute === state.attribute);
+      const countByReit = {};
+      rowsInAttr.forEach(r => { countByReit[r.reit] = (countByReit[r.reit]||0)+1; });
+      const reits = Object.keys(countByReit).sort((a,b)=>countByReit[b]-countByReit[a]);
+
+      area.innerHTML = `
+        <h2>${state.attribute} 内のREIT</h2>
+        <div class="filter-actions">
+          <button id="selAll">すべて選択</button>
+          <button id="selNone">すべて解除</button>
+        </div>
+        <div id="reitFilters"></div>
+      `;
+      const container = document.getElementById('reitFilters');
+      reits.forEach(reit => {
+        const row = document.createElement('div');
+        row.className = 'reit-row';
+        row.innerHTML = `
+          <input type="checkbox" ${activeReits.has(reit)?'checked':''} data-reit="${reit}">
+          <span class="swatch" style="background:${reitColor(reit)}"></span>
+          <span class="name">${reit}</span>
+          <span class="count">${countByReit[reit]}</span>
+          <span class="drill" title="この銘柄だけを表示">›</span>
+        `;
+        row.querySelector('input').addEventListener('change', e => {
+          if (e.target.checked) activeReits.add(reit); else activeReits.delete(reit);
+          onFilterChange();
+        });
+        row.querySelector('.name').addEventListener('click', () => {
+          state.reit = reit;
+          onStateChange(true);
+        });
+        row.querySelector('.drill').addEventListener('click', () => {
+          state.reit = reit;
+          onStateChange(true);
+        });
+        container.appendChild(row);
+      });
+      document.getElementById('selAll').addEventListener('click', () => {
+        reits.forEach(r => activeReits.add(r));
+        renderDrilldownArea(); onFilterChange();
+      });
+      document.getElementById('selNone').addEventListener('click', () => {
+        reits.forEach(r => activeReits.delete(r));
+        renderDrilldownArea(); onFilterChange();
+      });
+      return;
+    }
+
+    if (state.attribute && state.reit) {
+      const rows = allRows.filter(r => r.attribute===state.attribute && r.reit===state.reit);
+      area.innerHTML = `<h2>${state.reit} の物件一覧</h2><div class="prop-list" id="propList"></div>`;
+      const list = document.getElementById('propList');
+      rows.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'prop-row';
+        const price = r.price!==null ? `${r.price}億円` : '価格非公表';
+        div.innerHTML = `<div class="pname">${r.name}</div><div class="pmeta">${r.addr} ／ ${price}</div>`;
+        div.addEventListener('click', () => {
+          map.setView([r.lat, r.lng], 14);
+          const found = markers.find(m => m.row === r);
+          if (found) found.marker.openPopup();
+        });
+        list.appendChild(div);
+      });
+      return;
+    }
+  }
+
+  function renderCharts(rows) {
     const barCtx = document.getElementById('barChart');
+    const barTitle = document.getElementById('barChartTitle');
+    let groups = {};
+    let groupColor = () => '#999';
+
+    if (!state.attribute) {
+      barTitle.textContent = '属性別 取得価格合計';
+      rows.forEach(r => { groups[r.attribute] = (groups[r.attribute]||0) + (r.price||0); });
+      groupColor = attrColor;
+    } else {
+      barTitle.textContent = (state.reit ? state.reit : state.attribute) + ' 内 REIT別 取得価格合計';
+      rows.forEach(r => { groups[r.reit] = (groups[r.reit]||0) + (r.price||0); });
+      groupColor = reitColor;
+    }
+    const entries = Object.entries(groups).sort((a,b)=>b[1]-a[1]);
     if (barChart) barChart.destroy();
-    if (reitEntries.length) {
+    if (entries.length) {
       barChart = new Chart(barCtx, {
         type: 'bar',
         data: {
-          labels: reitEntries.map(e => e[0].replace('投資法人','')),
-          datasets: [{
-            data: reitEntries.map(e => Math.round(e[1])),
-            backgroundColor: reitEntries.map(e => colorFor(e[0]))
-          }]
+          labels: entries.map(e => e[0].replace('投資法人','')),
+          datasets: [{ data: entries.map(e => Math.round(e[1])), backgroundColor: entries.map(e => groupColor(e[0])) }]
         },
         options: {
           indexAxis: 'y',
@@ -257,71 +424,35 @@
     }
 
     const byUsage = {};
-    filtered.forEach(r => { byUsage[r.usageBucket] = (byUsage[r.usageBucket]||0) + 1; });
-    const usageEntries = Object.entries(byUsage);
+    rows.forEach(r => { byUsage[r.usage] = (byUsage[r.usage]||0) + 1; });
+    const usageEntries = Object.entries(byUsage).sort((a,b)=>b[1]-a[1]).slice(0,8);
     const pieCtx = document.getElementById('pieChart');
     if (pieChart) pieChart.destroy();
     if (usageEntries.length) {
-      const usagePalette = ['#2f6fed','#f58231','#3cb44b','#911eb4','#e6194B'];
+      const usagePalette = ['#2f6fed','#f58231','#3cb44b','#911eb4','#e6194B','#42d4f4','#f032e6','#9A6324'];
       pieChart = new Chart(pieCtx, {
         type: 'doughnut',
-        data: {
-          labels: usageEntries.map(e=>e[0]),
-          datasets: [{ data: usageEntries.map(e=>e[1]), backgroundColor: usagePalette }]
-        },
-        options: { plugins: { legend: { position:'bottom', labels:{font:{size:10}, boxWidth:10} } } }
+        data: { labels: usageEntries.map(e=>e[0]), datasets:[{ data: usageEntries.map(e=>e[1]), backgroundColor: usagePalette }] },
+        options: { plugins: { legend: { position:'bottom', labels:{font:{size:9}, boxWidth:9} } } }
       });
     }
   }
 
-  function refresh() {
-    const filtered = applyFilters();
-    renderMarkers(filtered);
-    renderStats(filtered);
-    renderCharts(filtered);
+  function onFilterChange() {
+    const rows = visibleRows();
+    renderMarkers(rows);
+    renderStats(rows);
+    renderCharts(rows);
   }
 
-  function buildReitFilters() {
-    const reits = [...new Set(allRows.map(r=>r.reit))].sort((a,b)=>a.localeCompare(b,'ja'));
-    reits.forEach(r => activeReits.add(r));
-    const countByReit = {};
-    allRows.forEach(r => { countByReit[r.reit] = (countByReit[r.reit]||0)+1; });
-
-    const container = document.getElementById('reitFilters');
-    container.innerHTML = '';
-    reits.forEach(reit => {
-      const row = document.createElement('label');
-      row.className = 'reit-row';
-      row.innerHTML = `
-        <input type="checkbox" checked data-reit="${reit}">
-        <span class="swatch" style="background:${colorFor(reit)}"></span>
-        <span class="name">${reit}</span>
-        <span class="count">${countByReit[reit]}</span>
-      `;
-      row.querySelector('input').addEventListener('change', e => {
-        if (e.target.checked) activeReits.add(reit); else activeReits.delete(reit);
-        refresh();
-      });
-      container.appendChild(row);
-    });
-  }
-
-  function buildUsageFilters() {
-    const usages = [...new Set(allRows.map(r=>r.usageBucket))];
-    usages.forEach(u => activeUsages.add(u));
-    const container = document.getElementById('usageFilters');
-    container.innerHTML = '';
-    usages.forEach(u => {
-      const chip = document.createElement('div');
-      chip.className = 'chip active';
-      chip.textContent = u;
-      chip.addEventListener('click', () => {
-        if (activeUsages.has(u)) { activeUsages.delete(u); chip.classList.remove('active'); }
-        else { activeUsages.add(u); chip.classList.add('active'); }
-        refresh();
-      });
-      container.appendChild(chip);
-    });
+  function onStateChange(shouldFit) {
+    renderBreadcrumb();
+    renderDrilldownArea();
+    const rows = visibleRows();
+    renderMarkers(rows);
+    renderStats(rows);
+    renderCharts(rows);
+    if (shouldFit) fitToRows(rows);
   }
 
   function buildPriceSlider() {
@@ -335,27 +466,10 @@
       document.getElementById('priceMinLabel').textContent = `${priceMin}億円以上`;
       document.getElementById('priceMaxLabel').textContent = `${priceMax}億円以下`;
     }
-    minEl.addEventListener('input', () => {
-      priceMin = Math.min(+minEl.value, priceMax);
-      minEl.value = priceMin;
-      updateLabels(); refresh();
-    });
-    maxEl.addEventListener('input', () => {
-      priceMax = Math.max(+maxEl.value, priceMin);
-      maxEl.value = priceMax;
-      updateLabels(); refresh();
-    });
+    minEl.addEventListener('input', () => { priceMin = Math.min(+minEl.value, priceMax); minEl.value = priceMin; updateLabels(); onFilterChange(); });
+    maxEl.addEventListener('input', () => { priceMax = Math.max(+maxEl.value, priceMin); maxEl.value = priceMax; updateLabels(); onFilterChange(); });
     updateLabels();
   }
-
-  document.getElementById('selAll').addEventListener('click', () => {
-    document.querySelectorAll('#reitFilters input').forEach(cb => { cb.checked = true; activeReits.add(cb.dataset.reit); });
-    refresh();
-  });
-  document.getElementById('selNone').addEventListener('click', () => {
-    document.querySelectorAll('#reitFilters input').forEach(cb => { cb.checked = false; activeReits.delete(cb.dataset.reit); });
-    refresh();
-  });
 
   const sidebar = document.getElementById('sidebar');
   document.getElementById('sidebarToggle').addEventListener('click', () => sidebar.classList.toggle('open'));
@@ -373,16 +487,15 @@
         const lng = parseFloat(r['経度']);
         const priceStr = r['取得価格_億円'];
         const price = priceStr && !isNaN(parseFloat(priceStr)) ? parseFloat(priceStr) : null;
-        const usage = r['用途'] || '不明';
         return {
           reit: r['REIT名'] || '不明',
           code: r['証券コード'] || '',
           name: r['物件名'] || '',
           addr: r['所在地'] || '',
-          usage, usageBucket: usageBucket(usage),
+          usage: r['用途'] || '不明',
+          attribute: r['属性'] || 'その他',
           date: r['取得予定日'] || '',
-          price,
-          lat, lng,
+          price, lat, lng,
           source: r['出典'] || ''
         };
       }).filter(r => !isNaN(r.lat) && !isNaN(r.lng));
@@ -392,10 +505,8 @@
         return;
       }
 
-      buildReitFilters();
-      buildUsageFilters();
       buildPriceSlider();
-      refresh();
+      onStateChange(false);
 
       document.getElementById('updated').textContent =
         `総物件数: ${allRows.length} ／ 最終更新: ${window.__LAST_UPDATED__ || '不明'}`;
