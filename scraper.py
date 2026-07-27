@@ -248,6 +248,16 @@ def is_plausible_property_row(name: str, addr: str) -> bool:
     return True
 
 
+TYPE_SUFFIX_RE = re.compile(r"type\d+$", re.IGNORECASE)
+
+
+def clean_property_name(name: str) -> str:
+    """物件名末尾に紛れ込むアイコンのalt属性由来の内部コード(type1等)を除去"""
+    if not name:
+        return name
+    return TYPE_SUFFIX_RE.sub("", name).strip()
+
+
 def cell_text(cell) -> str:
     """
     セル内のテキストを取得する。見出しがアイコン画像(<img alt="...">)で
@@ -422,7 +432,7 @@ def scrape_site(config):
     )
     out = []
     for r in raw_rows:
-        name, addr = r["name"], r["addr"]
+        name, addr = clean_property_name(r["name"]), r["addr"]
         if config["reit"] == "日本ビルファンド投資法人":
             name = clean_nbf_name(name)
             addr = clean_nbf_address(addr)
@@ -440,7 +450,28 @@ def scrape_site(config):
             "出典": f"{config['url']} (自動取得 {datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d')})",
             "属性": config["attribute"],
         })
-    return out
+    return dedupe_prefer_priced(out)
+
+
+def dedupe_prefer_priced(rows):
+    """
+    同じ物件名が複数回出てくるサイト（例: 複数運営会社が絡む複合施設で
+    物件概要が2回記載されるケース）向けの重複排除。
+    同名の行が複数あれば、取得価格が入っている行を優先して1件だけ残す。
+    """
+    best_by_name = {}
+    order = []
+    for r in rows:
+        key = r["物件名"]
+        if key not in best_by_name:
+            best_by_name[key] = r
+            order.append(key)
+            continue
+        current = best_by_name[key]
+        # 現在保持している行に価格が無く、新しい行に価格があれば差し替える
+        if current["取得価格_億円"] == "" and r["取得価格_億円"] != "":
+            best_by_name[key] = r
+    return [best_by_name[k] for k in order]
 
 
 def load_existing_rows():
