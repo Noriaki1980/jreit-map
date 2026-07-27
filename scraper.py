@@ -158,26 +158,53 @@ def fetch_soup(url: str) -> BeautifulSoup:
     return BeautifulSoup(resp.text, "html.parser")
 
 
+LEADING_NUMBER_RE = re.compile(r"^[\d,]+(?:\.\d+)?")
+
+
 def parse_price_to_oku(text: str, unit: str = "百万円"):
     """
-    価格セルのテキストから最初の数値だけを取り出して億円に変換する。
-    サイトによっては "1,466百万円（14.66億円）" のように2つの数値が
-    併記されていることがあるため、単純に数字だけを全部抜き出して
-    連結すると誤った値になる。そのため正規表現で「最初の数値トークン」
-    だけを取得するようにしている。
+    価格セルのテキストから数値を取り出して億円に変換する。
+
+    一部サイト（例: 日本ロジスティクスファンド）は、PC表示用とスマホ表示用の
+    要素が同じセル内に両方存在し、get_text()で両方の値が区切りなく連結されて
+    しまうことがある。例: "1,4661,466.0"（"1,466" と "1,466.0" が連結）。
+
+    対策として、セル先頭の連続した数字(カンマ・小数点含む)を1つの塊として取り出し、
+    整数部分の桁を半分に割って前半＝後半かどうかを確認する。一致すれば重複と判断し
+    片方だけを使う。一致しなければ（桁数が奇数、または前半≠後半なら）通常の数値として
+    そのまま扱う。単純な正規表現の重複マッチよりも誤判定が起きにくい。
     """
     if not text:
         return None
-    match = re.search(r"[\d,]+(?:\.\d+)?", text)
-    if not match:
+
+    text = text.strip()
+    m = LEADING_NUMBER_RE.match(text)
+    if not m:
         return None
-    cleaned = match.group(0).replace(",", "")
-    if not cleaned:
+    raw = m.group(0)
+
+    if "." in raw:
+        int_part, dec_part = raw.split(".", 1)
+    else:
+        int_part, dec_part = raw, None
+
+    int_digits = int_part.replace(",", "")
+    if not int_digits:
         return None
+
+    n = len(int_digits)
+    if n % 2 == 0 and n >= 4:
+        half = n // 2
+        first, second = int_digits[:half], int_digits[half:]
+        if first == second:
+            int_digits = first  # 重複と判定 → 片方だけ使う
+
+    cleaned = int_digits + (f".{dec_part}" if dec_part else "")
     try:
         value = float(cleaned)
     except ValueError:
         return None
+
     if unit == "百万円":
         return round(value / 100, 2)
     if unit == "千円":
@@ -185,6 +212,18 @@ def parse_price_to_oku(text: str, unit: str = "百万円"):
     if unit == "円":
         return round(value / 100000000, 2)
     return round(value, 2)
+
+
+def clean_address(addr: str) -> str:
+    """
+    所在地セル末尾に紛れ込む、地域区分ラベルなどの余分な1桁数字を取り除く。
+    例: "神奈川県平塚市1" -> "神奈川県平塚市"
+    住所自体が数字（丁目・番地）で終わる場合は誤って削らないよう、
+    直前が日本語の住所語尾（市区町村郡都道府県）の場合のみ末尾の単独数字を削る。
+    """
+    if not addr:
+        return addr
+    return re.sub(r"(?<=[市区町村郡都道府県])\d$", "", addr.strip()).strip()
 
 
 def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百万円"):
@@ -220,7 +259,7 @@ def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百�
             if len(cells) <= max(idx_name, idx_addr):
                 continue
             name = cells[idx_name].get_text(strip=True)
-            addr = cells[idx_addr].get_text(strip=True)
+            addr = clean_address(cells[idx_addr].get_text(strip=True))
             price_text = cells[idx_price].get_text(strip=True) if idx_price is not None and idx_price < len(cells) else ""
             if not name or not addr:
                 continue
