@@ -206,12 +206,19 @@ def parse_price_to_oku(text: str, unit: str = "百万円"):
         return None
 
     if unit == "百万円":
-        return round(value / 100, 2)
-    if unit == "千円":
-        return round(value / 100000, 2)
-    if unit == "円":
-        return round(value / 100000000, 2)
-    return round(value, 2)
+        result = round(value / 100, 2)
+    elif unit == "千円":
+        result = round(value / 100000, 2)
+    elif unit == "円":
+        result = round(value / 100000000, 2)
+    else:
+        result = round(value, 2)
+
+    # 単一物件の取得価格として現実的にありえない大きさなら、
+    # 集計行やパース失敗の混入とみなして捨てる（安全装置）
+    if result is not None and result > 5000:
+        return None
+    return result
 
 
 def clean_address(addr: str) -> str:
@@ -260,9 +267,12 @@ def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百�
                 continue
             name = cells[idx_name].get_text(strip=True)
             addr = clean_address(cells[idx_addr].get_text(strip=True))
-            price_text = cells[idx_price].get_text(strip=True) if idx_price is not None and idx_price < len(cells) else ""
             if not name or not addr:
                 continue
+            # 「合計」「小計」などの集計行は物件データではないため除外
+            if name in ("合計", "小計", "計") or addr in ("合計", "小計", "計"):
+                continue
+            price_text = cells[idx_price].get_text(strip=True) if idx_price is not None and idx_price < len(cells) else ""
             results.append({
                 "name": name, "addr": addr,
                 "price_oku": parse_price_to_oku(price_text, price_unit),
