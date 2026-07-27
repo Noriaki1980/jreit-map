@@ -223,7 +223,21 @@ def clean_address(addr: str) -> str:
     return re.sub(r"(?<=[市区町村郡都道府県])\d$", "", addr.strip()).strip()
 
 
-def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百万円", date_keys=None):
+def cell_text(cell) -> str:
+    """
+    セル内のテキストを取得する。見出しがアイコン画像(<img alt="...">)で
+    表現されているサイトにも対応するため、通常のテキストに加えて
+    img要素のalt/title属性も連結して返す。
+    """
+    parts = [cell.get_text(strip=True)]
+    for img in cell.find_all("img"):
+        alt = img.get("alt") or img.get("title") or ""
+        if alt:
+            parts.append(alt.strip())
+    return " ".join(p for p in parts if p).strip()
+
+
+def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百万円", date_keys=None, debug_label=None):
     """
     <table> を総当たりし、ヘッダー行に name_keys/addr_keys/price_keys に
     部分一致する列があるテーブルをデータテーブルとみなして抽出する。
@@ -232,11 +246,12 @@ def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百�
     date_keys = date_keys or ["取得時期", "取得年月日", "取得日"]
     soup = fetch_soup(url)
     results = []
+    matched_any_table = False
     for table in soup.find_all("table"):
         header_row = table.find("tr")
         if not header_row:
             continue
-        headers = [c.get_text(strip=True) for c in header_row.find_all(["th", "td"])]
+        headers = [cell_text(c) for c in header_row.find_all(["th", "td"])]
         if not headers:
             continue
 
@@ -253,25 +268,32 @@ def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百�
         if idx_name is None or idx_addr is None:
             continue
 
+        matched_any_table = True
+        if idx_price is None and debug_label:
+            print(f"  [DEBUG] {debug_label}: 価格列が見つかりません。検出したヘッダー: {headers}")
+
         rows = table.find_all("tr")[1:]
         for tr in rows:
             cells = tr.find_all(["td", "th"])
             if len(cells) <= max(idx_name, idx_addr):
                 continue
-            name = cells[idx_name].get_text(strip=True)
-            addr = clean_address(cells[idx_addr].get_text(strip=True))
+            name = cell_text(cells[idx_name])
+            addr = clean_address(cell_text(cells[idx_addr]))
             if not name or not addr:
                 continue
             # 「合計」「小計」などの集計行は物件データではないため除外
             if name in ("合計", "小計", "計") or addr in ("合計", "小計", "計"):
                 continue
-            price_text = cells[idx_price].get_text(strip=True) if idx_price is not None and idx_price < len(cells) else ""
-            date_text = cells[idx_date].get_text(strip=True) if idx_date is not None and idx_date < len(cells) else ""
+            price_text = cell_text(cells[idx_price]) if idx_price is not None and idx_price < len(cells) else ""
+            date_text = cell_text(cells[idx_date]) if idx_date is not None and idx_date < len(cells) else ""
             results.append({
                 "name": name, "addr": addr,
                 "price_oku": parse_price_to_oku(price_text, price_unit),
                 "date": clean_acquisition_date(date_text),
             })
+
+    if not matched_any_table and debug_label:
+        print(f"  [DEBUG] {debug_label}: 物件名・所在地の列を持つテーブルが見つかりませんでした")
     return results
 
 
@@ -372,6 +394,7 @@ def scrape_site(config):
     raw_rows = generic_table_scrape(
         config["url"], config["name_keys"], config["addr_keys"], config["price_keys"],
         price_unit=config.get("price_unit", "百万円"),
+        debug_label=config["reit"],
     )
     out = []
     for r in raw_rows:
