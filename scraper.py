@@ -158,48 +158,38 @@ def fetch_soup(url: str) -> BeautifulSoup:
     return BeautifulSoup(resp.text, "html.parser")
 
 
-LEADING_NUMBER_RE = re.compile(r"^[\d,]+(?:\.\d+)?")
+STRICT_NUMBER_RE = re.compile(r"^(\d{1,3}(?:,\d{3})*)(\.\d+)?")
 
 
 def parse_price_to_oku(text: str, unit: str = "百万円"):
     """
     価格セルのテキストから数値を取り出して億円に変換する。
 
-    一部サイト（例: 日本ロジスティクスファンド）は、PC表示用とスマホ表示用の
-    要素が同じセル内に両方存在し、get_text()で両方の値が区切りなく連結されて
-    しまうことがある。例: "1,4661,466.0"（"1,466" と "1,466.0" が連結）。
+    一部サイト（例: MFLP、三菱地所物流リート等）は、同じ値を
+    「表示用（カンマ区切り・百万円単位）」と「機械可読用（円単位フル桁）」の
+    2形式で1セルに両方埋め込んでいる。例:
+      "15,50015,500,000,000"（"15,500"[百万円] + "15,500,000,000"[円]）
+    このため単純に数字を全部拾うと巨大な誤った値になる。
 
-    対策として、セル先頭の連続した数字(カンマ・小数点含む)を1つの塊として取り出し、
-    整数部分の桁を半分に割って前半＝後半かどうかを確認する。一致すれば重複と判断し
-    片方だけを使う。一致しなければ（桁数が奇数、または前半≠後半なら）通常の数値として
-    そのまま扱う。単純な正規表現の重複マッチよりも誤判定が起きにくい。
+    対策として、日本の数値表記の正しいカンマ区切りルール
+    （先頭1〜3桁、以降は必ずカンマ+3桁）に厳密に従う「最初の塊」だけを
+    正規表現で取り出す。ルールを満たさない続きの文字列（2つ目の表現）は
+    自動的に無視される。
     """
     if not text:
         return None
 
     text = text.strip()
-    m = LEADING_NUMBER_RE.match(text)
+    m = STRICT_NUMBER_RE.match(text)
     if not m:
         return None
-    raw = m.group(0)
 
-    if "." in raw:
-        int_part, dec_part = raw.split(".", 1)
-    else:
-        int_part, dec_part = raw, None
-
-    int_digits = int_part.replace(",", "")
+    int_digits = m.group(1).replace(",", "")
+    dec_part = m.group(2) or ""
     if not int_digits:
         return None
 
-    n = len(int_digits)
-    if n % 2 == 0 and n >= 4:
-        half = n // 2
-        first, second = int_digits[:half], int_digits[half:]
-        if first == second:
-            int_digits = first  # 重複と判定 → 片方だけ使う
-
-    cleaned = int_digits + (f".{dec_part}" if dec_part else "")
+    cleaned = int_digits + dec_part
     try:
         value = float(cleaned)
     except ValueError:
@@ -233,11 +223,13 @@ def clean_address(addr: str) -> str:
     return re.sub(r"(?<=[市区町村郡都道府県])\d$", "", addr.strip()).strip()
 
 
-def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百万円"):
+def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百万円", date_keys=None):
     """
     <table> を総当たりし、ヘッダー行に name_keys/addr_keys/price_keys に
     部分一致する列があるテーブルをデータテーブルとみなして抽出する。
+    date_keys が指定され、該当する列があれば取得年月日も一緒に抜き出す。
     """
+    date_keys = date_keys or ["取得時期", "取得年月日", "取得日"]
     soup = fetch_soup(url)
     results = []
     for table in soup.find_all("table"):
@@ -257,6 +249,7 @@ def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百�
         idx_name = find_col(name_keys)
         idx_addr = find_col(addr_keys)
         idx_price = find_col(price_keys)
+        idx_date = find_col(date_keys)
         if idx_name is None or idx_addr is None:
             continue
 
@@ -273,11 +266,30 @@ def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百�
             if name in ("合計", "小計", "計") or addr in ("合計", "小計", "計"):
                 continue
             price_text = cells[idx_price].get_text(strip=True) if idx_price is not None and idx_price < len(cells) else ""
+            date_text = cells[idx_date].get_text(strip=True) if idx_date is not None and idx_date < len(cells) else ""
             results.append({
                 "name": name, "addr": addr,
                 "price_oku": parse_price_to_oku(price_text, price_unit),
+                "date": clean_acquisition_date(date_text),
             })
     return results
+
+
+DATE_JP_RE = re.compile(r"\d{4}年\s*\d{1,2}月(?:\s*\d{1,2}日)?")
+
+
+def clean_acquisition_date(text: str) -> str:
+    """
+    取得時期セルから「20XX年X月」形式の日付部分だけを抜き出す。
+    価格と同様、同じ値が別形式（例: 2016/09/01）で連結されていることが
+    あるため、正規表現で日本語表記の日付パターンだけを狙って取り出す。
+    """
+    if not text:
+        return ""
+    m = DATE_JP_RE.search(text)
+    if m:
+        return m.group(0)
+    return text.strip()
 
 
 SITE_CONFIGS = [
@@ -319,7 +331,8 @@ SITE_CONFIGS = [
          name_keys=["物件名", "名称"], addr_keys=["所在地"], price_keys=["取得価格"]),
     dict(reit="コンフォリア・レジデンシャル投資法人", code="3282", attribute="住宅",
          url="https://www.comforia-reit.co.jp/ja/portfolio/index.html",
-         name_keys=["物件名", "名称"], addr_keys=["所在地"], price_keys=["取得価格"]),
+         name_keys=["物件名", "名称"], addr_keys=["所在地"], price_keys=["取得価格"],
+         price_unit="千円"),
     dict(reit="三井不動産アコモデーションファンド投資法人", code="3226", attribute="住宅",
          url="https://www.naf-r.jp/portfolio/5-1.html",
          name_keys=["物件名", "名称"], addr_keys=["所在地"], price_keys=["取得価格"]),
@@ -357,7 +370,8 @@ def clean_nbf_address(addr: str) -> str:
 
 def scrape_site(config):
     raw_rows = generic_table_scrape(
-        config["url"], config["name_keys"], config["addr_keys"], config["price_keys"]
+        config["url"], config["name_keys"], config["addr_keys"], config["price_keys"],
+        price_unit=config.get("price_unit", "百万円"),
     )
     out = []
     for r in raw_rows:
@@ -372,7 +386,7 @@ def scrape_site(config):
             "物件名": name,
             "所在地": addr,
             "用途": config["attribute"],
-            "取得予定日": "既存保有",
+            "取得予定日": r["date"] if r.get("date") else "既存保有(取得日不明)",
             "取得価格_億円": r["price_oku"] if r["price_oku"] is not None else "",
             "緯度": lat if lat is not None else "",
             "経度": lng if lng is not None else "",
