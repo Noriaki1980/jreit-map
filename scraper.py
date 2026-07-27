@@ -159,9 +159,19 @@ def fetch_soup(url: str) -> BeautifulSoup:
 
 
 def parse_price_to_oku(text: str, unit: str = "百万円"):
+    """
+    価格セルのテキストから最初の数値だけを取り出して億円に変換する。
+    サイトによっては "1,466百万円（14.66億円）" のように2つの数値が
+    併記されていることがあるため、単純に数字だけを全部抜き出して
+    連結すると誤った値になる。そのため正規表現で「最初の数値トークン」
+    だけを取得するようにしている。
+    """
     if not text:
         return None
-    cleaned = re.sub(r"[^\d.]", "", text)
+    match = re.search(r"[\d,]+(?:\.\d+)?", text)
+    if not match:
+        return None
+    cleaned = match.group(0).replace(",", "")
     if not cleaned:
         return None
     try:
