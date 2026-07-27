@@ -1,6 +1,6 @@
 """
 J-REIT 取得物件データ 自動更新スクリプト（本格版）
-=====================================================
+====================================================
 
 【重要な注意】
 このスクリプトは、2026年7月にClaudeが各REIT公式サイトを手動で確認しながら
@@ -326,9 +326,10 @@ SITE_CONFIGS = [
     dict(reit="日本ビルファンド投資法人", code="8951", attribute="オフィス",
          url="https://www.nbf-m.com/nbf/portfolio/list.html",
          name_keys=["物件名", "名称"], addr_keys=["所在地"], price_keys=["取得価格"]),
-    dict(reit="ジャパンリアルエステイト投資法人", code="8952", attribute="オフィス",
-         url="https://www.j-re.co.jp/ja_cms/portfolio/list.html",
-         name_keys=["物件名", "名称"], addr_keys=["所在地"], price_keys=["取得価格"]),
+    # ジャパンリアルエステイト投資法人は、公式サイトの一覧が単純な<table>構造では
+    # なく（カード型レイアウト等の可能性）、自動抽出が安定して0件になるため、
+    # 自動化対象から除外。以後は手動データのまま維持する。
+
     dict(reit="大和証券オフィス投資法人", code="8976", attribute="オフィス",
          url="https://www.daiwa-office.co.jp/ja/portfolio/port_list.html",
          name_keys=["物件名", "名称"], addr_keys=["所在地"], price_keys=["取得価格"]),
@@ -337,18 +338,39 @@ SITE_CONFIGS = [
 AUTOMATED_REIT_NAMES = {c["reit"] for c in SITE_CONFIGS}
 
 
+NBF_AREA_LABELS = ["都心５区以外の東京２３区", "都心５区", "東京２３区", "首都圏（東京２３区以外）",
+                    "政令指定都市等", "その他地域", "首都圏", "地方都市部"]
+
+
+def clean_nbf_name(name: str) -> str:
+    """日本ビルファンドの物件名先頭に付くエリア区分番号(1〜4桁の単独数字)を除去"""
+    return re.sub(r"^\d(?=[^\d])", "", name).strip()
+
+
+def clean_nbf_address(addr: str) -> str:
+    """所在地末尾に付くエリア区分ラベル（都心５区 等）を除去"""
+    for label in NBF_AREA_LABELS:
+        if addr.endswith(label):
+            return addr[: -len(label)].strip()
+    return addr
+
+
 def scrape_site(config):
     raw_rows = generic_table_scrape(
         config["url"], config["name_keys"], config["addr_keys"], config["price_keys"]
     )
     out = []
     for r in raw_rows:
-        lat, lng = geocode(r["addr"])
+        name, addr = r["name"], r["addr"]
+        if config["reit"] == "日本ビルファンド投資法人":
+            name = clean_nbf_name(name)
+            addr = clean_nbf_address(addr)
+        lat, lng = geocode(addr)
         out.append({
             "REIT名": config["reit"],
             "証券コード": config["code"],
-            "物件名": r["name"],
-            "所在地": r["addr"],
+            "物件名": name,
+            "所在地": addr,
             "用途": config["attribute"],
             "取得予定日": "既存保有",
             "取得価格_億円": r["price_oku"] if r["price_oku"] is not None else "",
@@ -377,30 +399,35 @@ def save_rows(rows):
 
 def main():
     existing = load_existing_rows()
-    kept_rows = [r for r in existing if r.get("REIT名") not in AUTOMATED_REIT_NAMES]
-    print(f"保持する既存行（自動化対象外）: {len(kept_rows)}件")
 
     new_rows = []
     failed = []
+    succeeded_reits = set()
     for config in SITE_CONFIGS:
         try:
             rows = scrape_site(config)
             if not rows:
                 raise ValueError("0件しか取得できませんでした（テーブル構造が変わった可能性）")
             new_rows.extend(rows)
+            succeeded_reits.add(config["reit"])
             print(f"OK  {config['reit']}: {len(rows)}件")
         except Exception as e:
             failed.append((config["reit"], str(e)))
-            print(f"NG  {config['reit']}: {e}")
+            print(f"NG  {config['reit']}: {e}（既存データを保持します）")
         time.sleep(1)
 
-    if not new_rows and failed:
+    # 取得に「成功した」銘柄の既存行だけを新データに差し替える。
+    # 失敗した銘柄（自動化対象であっても）は既存データをそのまま残す。
+    kept_rows = [r for r in existing if r.get("REIT名") not in succeeded_reits]
+    print(f"\n保持する既存行（成功銘柄以外すべて）: {len(kept_rows)}件")
+
+    if not new_rows:
         print("全サイトで取得に失敗したため、既存CSVは変更しません。")
         sys.exit(1)
 
     final_rows = kept_rows + new_rows
     save_rows(final_rows)
-    print(f"\n合計 {len(final_rows)}件を保存しました（自動取得: {len(new_rows)}件）")
+    print(f"合計 {len(final_rows)}件を保存しました（今回自動更新: {len(new_rows)}件）")
 
     if failed:
         print(f"\n以下 {len(failed)}件のREITで取得に失敗しました（該当REITの既存データは変更されていません）:")
