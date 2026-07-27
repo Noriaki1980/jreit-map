@@ -223,6 +223,31 @@ def clean_address(addr: str) -> str:
     return re.sub(r"(?<=[市区町村郡都道府県])\d$", "", addr.strip()).strip()
 
 
+NUMERIC_ONLY_RE = re.compile(r"^[\d,.\-－―ー\s]+$")
+ADDR_HINT_CHARS = ("都", "道", "府", "県")
+JUNK_VALUES = {"昇順", "降順", "昇順降順", "-", "－", "―", "ー", "小計", "合計", "計"}
+
+
+def is_plausible_property_row(name: str, addr: str) -> bool:
+    """
+    物件名・所在地として明らかにおかしい行（並び替えアイコンの
+    「昇順」「降順」、集計行の「合計」、colspanのズレで数値だけが
+    紛れ込んだ行など）を弾く簡易バリデーション。
+    """
+    if name in JUNK_VALUES or addr in JUNK_VALUES:
+        return False
+    # 物件名が数字・記号だけ（＝本来の列とズレて拾った数値）は不採用
+    if NUMERIC_ONLY_RE.match(name) or NUMERIC_ONLY_RE.match(addr):
+        return False
+    # 所在地は都道府県名を含むはず（含まない場合は列がズレている可能性が高い）
+    if not any(c in addr for c in ADDR_HINT_CHARS):
+        return False
+    # 「合計」「小計」を含む行（末尾以外に付くケースもある）は除外
+    if any(k in name for k in ("合計", "小計")) or any(k in addr for k in ("合計", "小計")):
+        return False
+    return True
+
+
 def cell_text(cell) -> str:
     """
     セル内のテキストを取得する。見出しがアイコン画像(<img alt="...">)で
@@ -281,8 +306,7 @@ def generic_table_scrape(url, name_keys, addr_keys, price_keys, price_unit="百�
             addr = clean_address(cell_text(cells[idx_addr]))
             if not name or not addr:
                 continue
-            # 「合計」「小計」などの集計行は物件データではないため除外
-            if name in ("合計", "小計", "計") or addr in ("合計", "小計", "計"):
+            if not is_plausible_property_row(name, addr):
                 continue
             price_text = cell_text(cells[idx_price]) if idx_price is not None and idx_price < len(cells) else ""
             date_text = cell_text(cells[idx_date]) if idx_date is not None and idx_date < len(cells) else ""
