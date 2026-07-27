@@ -91,11 +91,20 @@
   .chart-box canvas { max-height:180px; }
 
   .prop-list { max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:8px; background:#fff; }
-  .prop-row { padding:8px 10px; border-bottom:1px solid #f0f1f4; cursor:pointer; }
+  .prop-row {
+    position:relative; padding:8px 10px; border-bottom:1px solid #f0f1f4; cursor:pointer;
+    overflow:hidden;
+  }
   .prop-row:last-child { border-bottom:none; }
-  .prop-row:hover { background:#f2f4f8; }
+  .prop-row:hover .prop-row-bg { opacity:0.55; }
+  .prop-row .prop-row-bg {
+    position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg, var(--accent), rgba(47,111,237,0.35));
+    opacity:0.16; z-index:0; transition:opacity .15s;
+  }
+  .prop-row .prop-row-content { position:relative; z-index:1; display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
   .prop-row .pname { font-weight:600; }
   .prop-row .pmeta { color:var(--text-dim); font-size:11px; margin-top:2px; }
+  .prop-row .pprice { font-size:12px; font-weight:700; color:var(--navy); white-space:nowrap; flex-shrink:0; }
 
   #map { flex:1; min-width:0; }
 
@@ -369,14 +378,28 @@
     }
 
     if (state.attribute && state.reit) {
-      const rows = allRows.filter(r => r.attribute===state.attribute && r.reit===state.reit);
-      area.innerHTML = `<h2>${state.reit} の物件一覧</h2><div class="prop-list" id="propList"></div>`;
+      const rows = allRows
+        .filter(r => r.attribute===state.attribute && r.reit===state.reit)
+        .slice()
+        .sort((a, b) => (b.price ?? -Infinity) - (a.price ?? -Infinity)); // 価格が大きい順（非公表は末尾）
+      area.innerHTML = `<h2>${state.reit} の物件一覧（取得価格が大きい順）</h2><div class="prop-list" id="propList"></div>`;
       const list = document.getElementById('propList');
+      const maxPrice = Math.max(0, ...rows.map(r => r.price || 0));
       rows.forEach(r => {
         const div = document.createElement('div');
         div.className = 'prop-row';
-        const price = r.price!==null ? `${r.price}億円` : '価格非公表';
-        div.innerHTML = `<div class="pname">${r.name}</div><div class="pmeta">${r.addr} ／ ${price}</div>`;
+        const price = r.price !== null ? `${r.price}億円` : '価格非公表';
+        const barWidth = maxPrice > 0 && r.price !== null ? Math.max(2, (r.price / maxPrice) * 100) : 0;
+        div.innerHTML = `
+          <div class="prop-row-bg" style="width:${barWidth}%"></div>
+          <div class="prop-row-content">
+            <div>
+              <div class="pname">${r.name}</div>
+              <div class="pmeta">${r.addr}</div>
+            </div>
+            <div class="pprice">${price}</div>
+          </div>
+        `;
         div.addEventListener('click', () => {
           map.setView([r.lat, r.lng], 14);
           const found = markers.find(m => m.row === r);
@@ -516,6 +539,6 @@
     }
   });
 </script>
-<script>window.__LAST_UPDATED__ = "2026-07-27";</script>
+<script>window.__LAST_UPDATED__ = "2026-07-25";</script>
 </body>
 </html>
